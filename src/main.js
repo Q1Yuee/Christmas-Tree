@@ -830,3 +830,19 @@ window.addEventListener('resize', () => {
 });
 
 animate();
+
+// Eastern Time Clock (秒精度)
+function updateClock() {
+  const now = new Date();
+  const options = {
+    timeZone: 'America/New_York',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false
+  };
+  const timeStr = now.toLocaleString('en-US', options);
+  document.getElementById('clock').textContent = `${timeStr}`;
+}
+updateClock();
+setInterval(updateClock, 1000);
