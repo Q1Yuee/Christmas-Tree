@@ -12,12 +12,12 @@ const CONFIG = {
 
   // === Text Settings ===
   text: "MERRY CHRISTMAS\n Yuki 宝宝",
-  textFont: "MengquRuantang, sans-serif",  // 萌趣软糖体
-  textColor: [1, 0.3, 0.2],      // RGB - 纯红色
+  textFont: "MengquRuantang, sans-serif",
+  textColor: [1, 0.3, 0.2],      // RGB
   textSize: 0.15,
   textY: 40,
-  textBrightness: 1,           // 亮度 (1=正常)
-  textSaturation: 2,           // 饱和度 (1=正常, 2=很艳)
+  textBrightness: 1,
+  textSaturation: 1.4,
   textTwinkleSpeed: 5.0,
   textGlowIntensity: 0.3,
 
@@ -699,6 +699,240 @@ const cloudSea = createCloudSea();
 scene.add(spiralGalaxy);
 scene.add(cloudSea);
 
+// --- Fireworks System ---
+class Firework {
+  constructor() {
+    this.particles = [];
+    this.exploded = false;
+    this.dead = false;
+
+    // Launch position (random horizontal, below screen)
+    this.launchX = (Math.random() - 0.5) * 300;
+    this.launchZ = (Math.random() - 0.5) * 100 - 50;
+
+    // Target explosion height
+    this.targetY = 40 + Math.random() * 60;
+
+    // Rocket properties
+    this.rocketY = -60;
+    this.rocketSpeed = 1.5 + Math.random() * 1;
+
+    // Explosion color (random vibrant color)
+    const hue = Math.random();
+    this.color = new THREE.Color().setHSL(hue, 1, 0.6);
+    this.color2 = new THREE.Color().setHSL((hue + 0.1) % 1, 1, 0.7);
+
+    // Create rocket trail geometry
+    this.trailGeometry = new THREE.BufferGeometry();
+    this.trailPositions = new Float32Array(30 * 3); // 30 trail particles
+    this.trailColors = new Float32Array(30 * 3);
+    this.trailSizes = new Float32Array(30);
+
+    for (let i = 0; i < 30; i++) {
+      this.trailPositions[i * 3] = this.launchX;
+      this.trailPositions[i * 3 + 1] = this.rocketY - i * 0.5;
+      this.trailPositions[i * 3 + 2] = this.launchZ;
+
+      const alpha = 1 - i / 30;
+      this.trailColors[i * 3] = this.color.r * alpha;
+      this.trailColors[i * 3 + 1] = this.color.g * alpha;
+      this.trailColors[i * 3 + 2] = this.color.b * alpha;
+      this.trailSizes[i] = (1 - i / 30) * 2;
+    }
+
+    this.trailGeometry.setAttribute('position', new THREE.BufferAttribute(this.trailPositions, 3));
+    this.trailGeometry.setAttribute('color', new THREE.BufferAttribute(this.trailColors, 3));
+    this.trailGeometry.setAttribute('size', new THREE.BufferAttribute(this.trailSizes, 1));
+
+    this.trailMaterial = new THREE.PointsMaterial({
+      size: 2,
+      vertexColors: true,
+      map: particleTexture,
+      transparent: true,
+      opacity: 0.9,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
+
+    this.trail = new THREE.Points(this.trailGeometry, this.trailMaterial);
+    scene.add(this.trail);
+
+    // Explosion particles (created on explosion)
+    this.explosionGeometry = null;
+    this.explosionMaterial = null;
+    this.explosion = null;
+    this.explosionVelocities = [];
+    this.explosionLife = 0;
+    this.maxLife = 3;
+  }
+
+  explode() {
+    this.exploded = true;
+    scene.remove(this.trail);
+
+    // Create explosion particles
+    const particleCount = 150 + Math.floor(Math.random() * 100);
+    this.explosionGeometry = new THREE.BufferGeometry();
+    const positions = new Float32Array(particleCount * 3);
+    const colors = new Float32Array(particleCount * 3);
+    const sizes = new Float32Array(particleCount);
+
+    for (let i = 0; i < particleCount; i++) {
+      positions[i * 3] = this.launchX;
+      positions[i * 3 + 1] = this.targetY;
+      positions[i * 3 + 2] = this.launchZ;
+
+      // Random direction (spherical)
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.random() * Math.PI;
+      const speed = 0.8 + Math.random() * 1.2;
+
+      this.explosionVelocities.push({
+        x: Math.sin(phi) * Math.cos(theta) * speed,
+        y: Math.sin(phi) * Math.sin(theta) * speed,
+        z: Math.cos(phi) * speed,
+        decay: 0.96 + Math.random() * 0.02
+      });
+
+      // Alternate between two colors
+      const useSecondColor = Math.random() > 0.5;
+      const c = useSecondColor ? this.color2 : this.color;
+      colors[i * 3] = c.r;
+      colors[i * 3 + 1] = c.g;
+      colors[i * 3 + 2] = c.b;
+
+      sizes[i] = 2 + Math.random() * 2;
+    }
+
+    this.explosionGeometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    this.explosionGeometry.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+    this.explosionGeometry.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+
+    this.explosionMaterial = new THREE.PointsMaterial({
+      size: 3,
+      vertexColors: true,
+      map: particleTexture,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+      sizeAttenuation: true
+    });
+
+    this.explosion = new THREE.Points(this.explosionGeometry, this.explosionMaterial);
+    scene.add(this.explosion);
+  }
+
+  update(delta) {
+    if (this.dead) return;
+
+    if (!this.exploded) {
+      // Update rocket position
+      this.rocketY += this.rocketSpeed;
+
+      // Update trail positions (shift down, add new at top)
+      for (let i = 29; i > 0; i--) {
+        this.trailPositions[i * 3] = this.trailPositions[(i - 1) * 3];
+        this.trailPositions[i * 3 + 1] = this.trailPositions[(i - 1) * 3 + 1];
+        this.trailPositions[i * 3 + 2] = this.trailPositions[(i - 1) * 3 + 2];
+      }
+      this.trailPositions[0] = this.launchX + (Math.random() - 0.5) * 0.5;
+      this.trailPositions[1] = this.rocketY;
+      this.trailPositions[2] = this.launchZ + (Math.random() - 0.5) * 0.5;
+
+      this.trailGeometry.attributes.position.needsUpdate = true;
+
+      // Check if reached target
+      if (this.rocketY >= this.targetY) {
+        this.explode();
+      }
+    } else {
+      // Update explosion particles
+      this.explosionLife += delta;
+
+      const positions = this.explosionGeometry.attributes.position.array;
+      const colors = this.explosionGeometry.attributes.color.array;
+
+      for (let i = 0; i < this.explosionVelocities.length; i++) {
+        const vel = this.explosionVelocities[i];
+
+        // Apply velocity
+        positions[i * 3] += vel.x;
+        positions[i * 3 + 1] += vel.y;
+        positions[i * 3 + 2] += vel.z;
+
+        // Apply gravity
+        vel.y -= 0.02;
+
+        // Apply decay
+        vel.x *= vel.decay;
+        vel.z *= vel.decay;
+
+        // Fade color
+        const fade = Math.max(0, 1 - this.explosionLife / this.maxLife);
+        colors[i * 3] *= 0.995;
+        colors[i * 3 + 1] *= 0.995;
+        colors[i * 3 + 2] *= 0.995;
+      }
+
+      this.explosionGeometry.attributes.position.needsUpdate = true;
+      this.explosionGeometry.attributes.color.needsUpdate = true;
+
+      // Fade opacity
+      this.explosionMaterial.opacity = Math.max(0, 1 - this.explosionLife / this.maxLife);
+
+      // Check if dead
+      if (this.explosionLife >= this.maxLife) {
+        this.dead = true;
+        scene.remove(this.explosion);
+        this.explosionGeometry.dispose();
+        this.explosionMaterial.dispose();
+      }
+    }
+  }
+
+  dispose() {
+    if (this.trail) {
+      scene.remove(this.trail);
+      this.trailGeometry.dispose();
+      this.trailMaterial.dispose();
+    }
+    if (this.explosion) {
+      scene.remove(this.explosion);
+      this.explosionGeometry.dispose();
+      this.explosionMaterial.dispose();
+    }
+  }
+}
+
+// Fireworks manager
+const fireworks = [];
+let timeSinceLastFirework = 0;
+const fireworkInterval = 0.8; // New firework every 0.8 seconds
+
+function updateFireworks(delta) {
+  // Launch new fireworks
+  timeSinceLastFirework += delta;
+  if (timeSinceLastFirework >= fireworkInterval) {
+    timeSinceLastFirework = 0;
+    // Launch 1-3 fireworks at once
+    const count = 1 + Math.floor(Math.random() * 2);
+    for (let i = 0; i < count; i++) {
+      fireworks.push(new Firework());
+    }
+  }
+
+  // Update existing fireworks
+  for (let i = fireworks.length - 1; i >= 0; i--) {
+    fireworks[i].update(delta);
+    if (fireworks[i].dead) {
+      fireworks[i].dispose();
+      fireworks.splice(i, 1);
+    }
+  }
+}
+
 // --- Starry Sky Background ---
 import { shaderMaterial } from './shaders/shaderHelper.js';
 
@@ -739,6 +973,7 @@ const clock = new THREE.Clock();
 
 function animate() {
   requestAnimationFrame(animate);
+  const delta = clock.getDelta();
   const time = clock.getElapsedTime();
 
   controls.update();
@@ -774,6 +1009,9 @@ function animate() {
   // Animate Galaxies
   if (spiralGalaxy) spiralGalaxy.rotation.y = time * 0.05; // Inner spiral
   if (cloudSea) cloudSea.rotation.y = time * 0.02; // Outer sea slower
+
+  // Animate Fireworks
+  updateFireworks(delta);
 
   // Animate Skybox Stars
   if (starryMaterial) starryMaterial.uniforms.time.value = time;
