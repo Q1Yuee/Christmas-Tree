@@ -520,8 +520,8 @@ function createTextParticles(textString) {
   geo.setAttribute('targetPos', new THREE.Float32BufferAttribute(origins, 3));
 
   const mat = shaderMaterial(
-    '/src/shaders/text.vs',
-    '/src/shaders/text.fs',
+    `${import.meta.env.BASE_URL}shaders/text.vs`,
+    `${import.meta.env.BASE_URL}shaders/text.fs`,
     {
       uniforms: {
         time: { value: 0 },
@@ -940,8 +940,8 @@ import { shaderMaterial } from './shaders/shaderHelper.js';
 // Note: We use raw imports via Vite if possible, but shaderHelper uses FileLoader.
 // FileLoader loads via fetch. In Vite, /src/shaders/... usually works.
 const starryMaterial = shaderMaterial(
-  '/src/shaders/stars.vs',
-  '/src/shaders/stars.fs',
+  `${import.meta.env.BASE_URL}shaders/stars.vs`,
+  `${import.meta.env.BASE_URL}shaders/stars.fs`,
   {
     side: THREE.BackSide,
     uniforms: {
