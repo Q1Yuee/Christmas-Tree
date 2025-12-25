@@ -1,3 +1,8 @@
+@font-face {
+  font-family: 'MengquRuantang';
+  src: url('/萌趣软糖体(商用需授权).ttf') format('truetype');
+}
+
 :root {
   font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
   line-height: 1.5;
@@ -10,16 +15,20 @@ body {
   place-items: center;
   min-width: 320px;
   min-height: 100vh;
-  background-color: #000; /* Black background for contrast */
-  overflow: hidden; /* Hide scrollbars */
+  background-color: #000;
+  /* Black background for contrast */
+  overflow: hidden;
+  /* Hide scrollbars */
 }
 
-#version {
+#footer {
   position: absolute;
-  bottom: 10px;
-  right: 10px;
+  bottom: 15px;
+  right: 20px;
   color: white;
-  opacity: 0.5;
-  font-size: 0.8rem;
+  opacity: 0.6;
+  font-family: 'Comic Sans MS', cursive;
+  font-size: 0.9rem;
   pointer-events: none;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.3);
 }

@@ -4,13 +4,26 @@ import gsap from 'gsap'
 
 // --- Configuration ---
 const CONFIG = {
-  treeHeight: 80, // Tree height
-  treeRadius: 30, // Base radius
+  // === Tree Settings ===
+  treeHeight: 80,
+  treeRadius: 30,
   particleCount: 15000,
-  autoRotateSpeed: 0, // Camera rotation speed
-  text: "MERRY\nCHRISTMAS",
-  colorLeaf: new THREE.Color(0x2d5a27), // Deep green
-  colorLeafBright: new THREE.Color(0x4ca64c), // Brighter green
+  autoRotateSpeed: 0,
+
+  // === Text Settings ===
+  text: "MERRY CHRISTMAS\n Yuki 宝宝",
+  textFont: "MengquRuantang, sans-serif",  // 萌趣软糖体
+  textColor: [1, 0.3, 0.2],      // RGB - 纯红色
+  textSize: 0.15,
+  textY: 40,
+  textBrightness: 1,           // 亮度 (1=正常)
+  textSaturation: 2,           // 饱和度 (1=正常, 2=很艳)
+  textTwinkleSpeed: 5.0,
+  textGlowIntensity: 0.3,
+
+  // === Tree Colors ===
+  colorLeaf: new THREE.Color(0x2d5a27),
+  colorLeafBright: new THREE.Color(0x4ca64c),
   colorOrnament: [
     new THREE.Color(0xff0000), // Red
     new THREE.Color(0xffd700), // Gold
@@ -28,7 +41,7 @@ scene.fog = new THREE.FogExp2(0x050505, 0.002);
 const sceneUI = new THREE.Scene();
 
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
-camera.position.set(0, 20, 100);
+camera.position.set(0, 20, 180);
 camera.lookAt(0, 0, 0);
 
 // UI Camera (Fixed)
@@ -466,7 +479,7 @@ function createTextParticles(textString) {
   ctx.fillRect(0, 0, width, height);
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `bold ${fontSize}px Arial, sans-serif`;
+  ctx.font = `bold ${fontSize}px ${CONFIG.textFont}`;
   ctx.fillStyle = '#ffffff';
 
   // Handle multiline
@@ -488,15 +501,15 @@ function createTextParticles(textString) {
       const index = (y * width + x) * 4;
       const r = data[index];
       if (r > 128) { // Threshold
-        // Map x,y to 3D space
-        const pX = (x - width / 2) * 0.15;
-        const pY = -(y - height / 2) * 0.15 - 30; // Position below tree
+        // Map x,y to 3D space using CONFIG
+        const pX = (x - width / 2) * CONFIG.textSize;
+        const pY = -(y - height / 2) * CONFIG.textSize + CONFIG.textY;
         const pZ = 0;
 
         positions.push((Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200, (Math.random() - 0.5) * 200); // Start scattered
         origins.push(pX, pY, pZ);
 
-        colors.push(1, 0.8, 0.2); // Golden text
+        colors.push(CONFIG.textColor[0], CONFIG.textColor[1], CONFIG.textColor[2]);
       }
     }
   }
@@ -506,53 +519,65 @@ function createTextParticles(textString) {
   geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   geo.setAttribute('targetPos', new THREE.Float32BufferAttribute(origins, 3));
 
-  const mat = new THREE.PointsMaterial({
-    size: 0.6,
-    vertexColors: true,
-    map: particleTexture,
-    transparent: true,
-    opacity: 0, // Start invisible
-    blending: THREE.AdditiveBlending,
-    depthWrite: false
-  });
+  const mat = shaderMaterial(
+    '/src/shaders/text.vs',
+    '/src/shaders/text.fs',
+    {
+      uniforms: {
+        time: { value: 0 },
+        pointTexture: { value: particleTexture },
+        brightness: { value: CONFIG.textBrightness },
+        saturation: { value: CONFIG.textSaturation },
+        twinkleSpeed: { value: CONFIG.textTwinkleSpeed },
+        glowIntensity: { value: CONFIG.textGlowIntensity }
+      },
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      vertexColors: true
+    }
+  );
 
   const points = new THREE.Points(geo, mat);
   return points;
 }
 
-const textParticles = createTextParticles(CONFIG.text);
-sceneUI.add(textParticles);
+// Wait for font to load, then create text
+let textParticles;
+document.fonts.load(`bold 80px ${CONFIG.textFont}`).then(() => {
+  textParticles = createTextParticles(CONFIG.text);
+  sceneUI.add(textParticles);
+
+  // Setup animation after text is created
+  setupTextAnimation();
+}).catch(() => {
+  // Fallback: create with default font if custom fails
+  console.warn('Custom font failed to load, using fallback');
+  textParticles = createTextParticles(CONFIG.text);
+  sceneUI.add(textParticles);
+  setupTextAnimation();
+});
+
+function setupTextAnimation() {
+  const posAttr = textParticles.geometry.attributes.position;
+  const startPosArray = new Float32Array(posAttr.array);
+  textParticles.geometry.setAttribute('startPos', new THREE.BufferAttribute(startPosArray, 3));
+}
 
 
 // --- Animation Control ---
 
-// Animate Text In
-gsap.to(textParticles.material, { opacity: 1, duration: 2, delay: 1 });
-
-const posAttr = textParticles.geometry.attributes.position;
-const targetAttr = textParticles.geometry.attributes.targetPos;
-
-// Animate each particle from random to target
-// Since we have many particles, GSAPing each one is too heavy.
-// We'll animate a global 'progress' uniform-like value or just lerp in loop?
-// Better: update positions in main loop using a simpler mechanic or use a custom GSAP plugin.
-// Or just iterate once to set GSAP tweens if count < 5000 is okay.
-// Let's use a "transition" object and update in loop.
-
-const animState = { progress: 0 };
+const animState = { progress: 0, finalized: false };
 gsap.to(animState, {
   progress: 1,
   duration: 3,
   ease: "power2.out",
-  delay: 1,
+  delay: 1.5, // Slightly longer delay to ensure font loads
   onUpdate: () => {
     // Interpolate positions handled in loop
   }
 });
 
-// Storing start positions for interpolation
-const startPosArray = new Float32Array(posAttr.array);
-textParticles.geometry.setAttribute('startPos', new THREE.BufferAttribute(startPosArray, 3));
 
 // --- Dual Galaxy Base ---
 
@@ -754,27 +779,35 @@ function animate() {
   if (starryMaterial) starryMaterial.uniforms.time.value = time;
   if (skybox) skybox.rotation.y = time * 0.01; // Very slow rotation for the sky
 
-  // Text Animation (Manual Lerp based on animState.progress)
-  if (animState.progress < 1) {
-    const p = animState.progress;
+  // Text Animation (only if textParticles exists)
+  if (textParticles && textParticles.geometry.attributes.startPos) {
+    // Update Text Shader Time
+    if (textParticles.material.uniforms) {
+      textParticles.material.uniforms.time.value = time;
+    }
+
     const pos = textParticles.geometry.attributes.position;
     const start = textParticles.geometry.attributes.startPos;
     const target = textParticles.geometry.attributes.targetPos;
 
-    for (let i = 0; i < pos.count; i++) {
-      // We moved cameraUI to be fixed z=100 looking at 0,0,0
-      // Text is at y-30 (which might be off screen depending on FOV)
-      // Let's adjust targetPos.
-      // Actually, let's keep logic same for now, but inspect position.
-      const x = start.getX(i) + (target.getX(i) - start.getX(i)) * p;
-      const y = start.getY(i) + (target.getY(i) - start.getY(i)) * p;
-      const z = start.getZ(i) + (target.getZ(i) - start.getZ(i)) * p;
-      pos.setXYZ(i, x, y, z);
+    if (animState.progress < 1) {
+      const p = animState.progress;
+
+      for (let i = 0; i < pos.count; i++) {
+        const x = start.getX(i) + (target.getX(i) - start.getX(i)) * p;
+        const y = start.getY(i) + (target.getY(i) - start.getY(i)) * p;
+        const z = start.getZ(i) + (target.getZ(i) - start.getZ(i)) * p;
+        pos.setXYZ(i, x, y, z);
+      }
+      pos.needsUpdate = true;
+    } else if (!animState.finalized) {
+      // Snap to final positions once
+      animState.finalized = true;
+      for (let i = 0; i < pos.count; i++) {
+        pos.setXYZ(i, target.getX(i), target.getY(i), target.getZ(i));
+      }
+      pos.needsUpdate = true;
     }
-    pos.needsUpdate = true;
-  } else {
-    // Float effect for text after assembled
-    // textParticles.rotation.y = Math.sin(time) * 0.1;
   }
 
   // Render Main Scene
